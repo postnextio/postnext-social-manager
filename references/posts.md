@@ -1,5 +1,7 @@
 # Posts
 
+> Safety: the API key posts to real accounts. Use a dedicated key, never echo it, and confirm with the user before any publish, schedule, cancel or delete.
+
 Create a post by sending a `providers` map. Each key is a **bare provider name** and each value is one channel's entry.
 
 ## Request shape (CreatePostRequest)

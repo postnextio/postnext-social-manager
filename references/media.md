@@ -1,5 +1,7 @@
 # Media
 
+> Safety: upload only files the user asked to attach (images and video). Use a dedicated API key and never echo it. The `postnext` helper refuses other file types.
+
 Upload an image or video, then put the returned **`asset.url`** into a post's `content.media[].url`. The `assetId` is not used by the publish path.
 
 ## Which upload path
