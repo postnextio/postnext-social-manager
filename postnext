@@ -12,11 +12,14 @@
 
 set -euo pipefail
 
-BASE="${POSTNEXT_BASE_URL:-https://api-app.postnext.io}"
+BASE="https://api-app.postnext.io"
 
 die()  { printf 'postnext: %s\n' "$1" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
 need curl; need jq
+
+# valid_id VALUE -> dies unless VALUE is a plain token (no slash, dot, ?, #, space) so it cannot rewrite the request path
+valid_id() { case "$1" in ''|*[!A-Za-z0-9_-]*) die "invalid id: $1";; esac; }
 [ -n "${POSTNEXT_API_KEY:-}" ] || die "set POSTNEXT_API_KEY (create one at https://postnext.io/account/api-keys)"
 
 # api METHOD PATH [json-body]  -> stdout: body; on HTTP>=400 prints a human error and exits 1
@@ -86,6 +89,7 @@ cmd_upload() {
          '{filename:$f, contentType:$c, sizeBytes:$s}')")"
     upl_id="$(echo "$init" | jq -r '.data.uploadId')"
     upl_url="$(echo "$init" | jq -r '.data.uploadUrl')"
+    case "$upl_url" in https://*) ;; *) die "refusing non-https upload URL";; esac
     # PUT the bytes; Content-Type MUST match the signed contentType or S3 rejects the signature
     curl -sS -X PUT "$upl_url" -H "Content-Type: $mime" --data-binary "@$file" >/dev/null \
       || die "S3 upload PUT failed"
@@ -179,16 +183,16 @@ cmd_whoami()   { api GET /api/v1/account | jq '{name, email, uniqueId, onboardin
 cmd_channels() { api GET /api/connections | jq -r '.[] | "\(.provider)\t\(.channelName)\t\(.providerId)\tattention=\(.requiresAttention)"'; }
 cmd_posts()    { local s="${1:-}"; api GET "/api/posts${s:+?status=$s}" | unwrap; }
 cmd_results()  { api GET /api/posts/results | jq '.data.results'; }
-cmd_cancel()   { local id="${1:?usage: postnext cancel <postId>}"; api POST "/api/posts/$id/cancel-schedule" | jq '.data|{id, status}'; }
-cmd_delete()   { local id="${1:?usage: postnext delete <groupId>}"; api DELETE "/api/posts/$id" | jq '.data'; }
+cmd_cancel()   { local id="${1:?usage: postnext cancel <postId>}"; valid_id "$id"; api POST "/api/posts/$id/cancel-schedule" | jq '.data|{id, status}'; }
+cmd_delete()   { local id="${1:?usage: postnext delete <groupId>}"; valid_id "$id"; api DELETE "/api/posts/$id" | jq '.data'; }
 
 cmd_analytics() {
   local sub="${1:-overview}"; shift || true
   case "$sub" in
     overview|posts|daily|audience-growth|engagement-over-time) api GET "/api/v1/analytics/$sub" | unwrap;;
-    best-time) local p="${1:?usage: postnext analytics best-time <provider>}"; api GET "/api/v1/analytics/best-time-to-post?platform=$p" | unwrap;;
+    best-time) local p="${1:?usage: postnext analytics best-time <provider>}"; valid_id "$p"; api GET "/api/v1/analytics/best-time-to-post?platform=$p" | unwrap;;
     sync)      api POST /api/v1/analytics/sync | unwrap;;
-    post)      local id="${1:?usage: postnext analytics post <postId>}"; api GET "/api/v1/analytics/post/$id" | unwrap;;
+    post)      local id="${1:?usage: postnext analytics post <postId>}"; valid_id "$id"; api GET "/api/v1/analytics/post/$id" | unwrap;;
     *) die "unknown analytics subcommand: $sub";;
   esac
 }
@@ -208,7 +212,7 @@ postnext <command>
   delete <groupId>            delete a post from PostNext
   analytics <overview|posts|daily|audience-growth|engagement-over-time|best-time P|sync|post ID>
 
-Env: POSTNEXT_API_KEY (required), POSTNEXT_BASE_URL (optional)
+Env: POSTNEXT_API_KEY (required)
 EOF
   exit 1
 }

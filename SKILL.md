@@ -1,6 +1,10 @@
 ---
 name: postnext-social-manager
 description: Manage social media through PostNext - schedule, publish, and analyze posts across Twitter/X, Instagram, LinkedIn, Threads, YouTube, TikTok, and Bluesky via the PostNext public API. Use when the user wants to draft, schedule, or publish social posts, upload media for posts, check what is queued, or read social analytics (engagement, best time to post, audience growth) and has a PostNext account and API key.
+metadata:
+  requires:
+    bins: [curl, jq]
+    env: [POSTNEXT_API_KEY]
 ---
 
 # PostNext Social Manager
@@ -25,6 +29,13 @@ Two ways to use this skill:
    - `postnext post --provider twitter --text "..." --media ./a.png`
    - `postnext schedule --provider instagram --text "..." --media ./a.jpg --at 2026-07-25T14:00:00Z`
 4. **Measure**: `postnext analytics overview`, `postnext analytics best-time twitter`, `postnext results`.
+
+## Safety
+
+- The API key acts on the user's real social accounts. Use a dedicated key, and never paste it into posts, logs or URLs.
+- Confirm with the user before any publish, schedule, cancel or delete. Show the provider, channel, text and time first.
+- `delete` removes the post from PostNext only. It does not remove an already-published post from the platform.
+- The helper only talks to `https://api-app.postnext.io`. Do not point raw curl recipes at any other host with the key.
 
 ## Four traps this skill exists to prevent
 
