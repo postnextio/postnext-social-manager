@@ -23,8 +23,9 @@ valid_id() { case "$1" in ''|*[!A-Za-z0-9_-]*) die "invalid id: $1";; esac; }
 [ -n "${POSTNEXT_API_KEY:-}" ] || die "set POSTNEXT_API_KEY (create one at https://postnext.io/account/api-keys)"
 case "$POSTNEXT_API_KEY" in *[!A-Za-z0-9_.-]*) die "POSTNEXT_API_KEY contains unexpected characters";; esac
 
-# kcurl ARGS... -> curl with the key header fed on stdin, so the key never appears in the process list
-kcurl() { curl -H @- "$@" <<<"x-api-key: $POSTNEXT_API_KEY"; }
+# kcurl ARGS... -> curl with the key header fed on stdin, so the key never appears in the process list.
+# -q (must be first) skips ~/.curlrc, where "verbose" would print the key and "location-trusted" would forward it.
+kcurl() { curl -q -H @- "$@" <<<"x-api-key: $POSTNEXT_API_KEY"; }
 
 # api METHOD PATH [json-body]  -> stdout: body; on HTTP>=400 prints a human error and exits 1
 api() {
