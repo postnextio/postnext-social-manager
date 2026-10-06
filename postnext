@@ -21,6 +21,10 @@ need curl; need jq
 # valid_id VALUE -> dies unless VALUE is a plain token (no slash, dot, ?, #, space) so it cannot rewrite the request path
 valid_id() { case "$1" in ''|*[!A-Za-z0-9_-]*) die "invalid id: $1";; esac; }
 [ -n "${POSTNEXT_API_KEY:-}" ] || die "set POSTNEXT_API_KEY (create one at https://postnext.io/account/api-keys)"
+case "$POSTNEXT_API_KEY" in *[!A-Za-z0-9_.-]*) die "POSTNEXT_API_KEY contains unexpected characters";; esac
+
+# kcurl ARGS... -> curl with the key header fed on stdin, so the key never appears in the process list
+kcurl() { curl -H @- "$@" <<<"x-api-key: $POSTNEXT_API_KEY"; }
 
 # api METHOD PATH [json-body]  -> stdout: body; on HTTP>=400 prints a human error and exits 1
 api() {
@@ -28,16 +32,15 @@ api() {
   local tmp code
   tmp="$(mktemp)"
   if [ -n "$body" ]; then
-    code="$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" "$BASE$path" \
-      -H "x-api-key: $POSTNEXT_API_KEY" -H 'Content-Type: application/json' -d "$body")"
+    code="$(kcurl -sS -o "$tmp" -w '%{http_code}' -X "$method" "$BASE$path" \
+      -H 'Content-Type: application/json' -d "$body")"
   else
-    code="$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" "$BASE$path" \
-      -H "x-api-key: $POSTNEXT_API_KEY")"
+    code="$(kcurl -sS -o "$tmp" -w '%{http_code}' -X "$method" "$BASE$path")"
   fi
   if [ "$code" -ge 400 ]; then
     local msg; msg="$(jq -r '
       if type=="object" then
-        (.error.message // (.error|if type=="string" then . else empty end) // .message // .code // "request failed")
+        ((.error|if type=="object" then .message elif type=="string" then . else empty end) // .message // .code // "request failed")
       else "request failed" end' "$tmp" 2>/dev/null || echo "request failed")"
     case "$code" in
       401) msg="invalid or missing API key ($msg)";;
@@ -78,6 +81,8 @@ cmd_upload() {
   local file="${1:-}"; [ -f "$file" ] || die "usage: postnext upload <file>"
   local size mime; size="$(wc -c < "$file" | tr -d ' ')"; mime="$(mime_for "$file")"
   [ "$mime" != application/octet-stream ] || die "refusing to upload '$file': only image and video files (jpg png webp gif mp4 webm mov)"
+  # curl -F splits its value on ; and reads quotes/backslashes, so "a.txt;x.png" would upload a.txt
+  case "$file" in *[\;,\"\\]*|*$'\n'*|*$'\r'*) die "refusing to upload '$file': rename it without ; , \" or \\ characters";; esac
   local PRESIGN_MAX=$((50*1024*1024))
   local presignable=0
   case "$mime" in image/jpeg|image/png|image/webp|image/gif|video/mp4|video/webm) presignable=1;; esac
@@ -99,8 +104,7 @@ cmd_upload() {
   else
     # large video (>50MB) or non-allow-list type -> multipart /single (500MB); needs userId
     local uid; uid="$(account_uniqueid)"
-    curl -sS -X POST "$BASE/api/assets/upload/single" \
-      -H "x-api-key: $POSTNEXT_API_KEY" \
+    kcurl -sS -X POST "$BASE/api/assets/upload/single" \
       -F "file=@$file;type=$mime" -F "userId=$uid" | jq -r '.asset.url'
   fi
 }
