@@ -16,12 +16,13 @@ The bundled `postnext` helper needs `curl` and `jq`. In an environment with no s
 
 ```bash
 ./postnext channels                                   # what is connected
-./postnext post --provider twitter --text "Hello" --media ./hero.png
+./postnext post --provider twitter --text "Hello" --media ./hero.png   # prints a preview, sends nothing
+./postnext post --provider twitter --text "Hello" --media ./hero.png --confirm <code>   # after the user approves
 ./postnext schedule --provider instagram --text "Launch" --media ./a.jpg --at 2026-07-25T14:00:00Z
 ./postnext analytics best-time twitter
 ```
 
-Run `./postnext help` for the full command list.
+Run `./postnext help` for the full command list. `post`, `schedule`, `cancel`, `delete` and `upload` always preview first and need the `--confirm` code from that preview to run. `bash tests/confirm.sh` checks this offline.
 
 ## What is in here
 
@@ -30,6 +31,7 @@ Run `./postnext help` for the full command list.
 | `SKILL.md` | Skill entry point: setup, the core loop, and a router to the references. |
 | `postnext` | Bash helper (curl + jq) that handles the API's error-prone parts. |
 | `references/` | Per-area docs with raw curl recipes: posts, media, channels, analytics, errors. |
+| `tests/confirm.sh` | Proves the five account-changing commands send nothing without a matching `--confirm` code. |
 | `docs/` | Design spec. |
 
 ## Scope

@@ -27,6 +27,29 @@ case "$POSTNEXT_API_KEY" in *[!A-Za-z0-9_.-]*) die "POSTNEXT_API_KEY contains un
 # -q (must be first) skips ~/.curlrc, where "verbose" would print the key and "location-trusted" would forward it.
 kcurl() { curl -q -H @- "$@" <<<"x-api-key: $POSTNEXT_API_KEY"; }
 
+# ---- confirmation gate -------------------------------------------------------
+# Every command that changes the account (post, schedule, cancel, delete, upload)
+# first prints a PREVIEW and sends nothing. It runs only when called again with
+# --confirm <code>, where <code> is a hash of that exact operation: change the
+# text, media, time or target and the old code no longer matches.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
+
+# gate DESCRIPTION_JSON CONFIRM -> returns only when CONFIRM matches; otherwise previews and exits 3
+gate() {
+  local desc code
+  desc="$(printf '%s' "$1" | jq -cS .)"
+  code="$(printf '%s' "$desc" | sha256 | cut -c1-12)"
+  [ -n "$2" ] && [ "$2" = "$code" ] && return 0
+  [ -z "$2" ] || printf 'postnext: --confirm %s does not match this operation (it changed since the preview)\n' "$2" >&2
+  printf 'PREVIEW (nothing was sent):\n'
+  printf '%s\n' "$desc" | jq .
+  printf 'Show this to the user. Only after they approve exactly this, run the same command again with: --confirm %s\n' "$code"
+  exit 3
+}
+
+# file_fingerprint FILE -> sha256 of the bytes, so a confirmed upload cannot be swapped for another file
+file_fingerprint() { sha256 < "$1"; }
+
 # api METHOD PATH [json-body]  -> stdout: body; on HTTP>=400 prints a human error and exits 1
 api() {
   local method="$1" path="$2" body="${3:-}"
@@ -77,13 +100,27 @@ mime_for() {
   esac
 }
 
-# upload FILE -> prints the asset URL (attach THIS into post content - trap #2)
-cmd_upload() {
-  local file="${1:-}"; [ -f "$file" ] || die "usage: postnext upload <file>"
-  local size mime; size="$(wc -c < "$file" | tr -d ' ')"; mime="$(mime_for "$file")"
-  [ "$mime" != application/octet-stream ] || die "refusing to upload '$file': only image and video files (jpg png webp gif mp4 webm mov)"
+# check_upload_file FILE -> dies unless FILE is an uploadable image/video
+check_upload_file() {
+  local file="$1"; [ -f "$file" ] || die "no such file: $file"
+  [ "$(mime_for "$file")" != application/octet-stream ] || die "refusing to upload '$file': only image and video files (jpg png webp gif mp4 webm mov)"
   # curl -F splits its value on ; and reads quotes/backslashes, so "a.txt;x.png" would upload a.txt
   case "$file" in *[\;,\"\\]*|*$'\n'*|*$'\r'*) die "refusing to upload '$file': rename it without ; , \" or \\ characters";; esac
+}
+
+# upload FILE [--confirm CODE] -> prints the asset URL (attach THIS into post content - trap #2)
+cmd_upload() {
+  local file="${1:-}" confirm=""; [ -n "$file" ] || die "usage: postnext upload <file> [--confirm CODE]"; shift
+  while [ $# -gt 0 ]; do case "$1" in --confirm) confirm="${2:-}"; shift 2 || die "--confirm needs a value";; *) die "unknown flag: $1";; esac; done
+  check_upload_file "$file"
+  gate "$(jq -n --arg f "$file" --arg h "$(file_fingerprint "$file")" '{op:"upload", file:$f, sha256:$h}')" "$confirm"
+  do_upload "$file"
+}
+
+# do_upload FILE -> uploads without asking (callers have already passed the gate)
+do_upload() {
+  local file="$1"
+  local size mime; size="$(wc -c < "$file" | tr -d ' ')"; mime="$(mime_for "$file")"
   local PRESIGN_MAX=$((50*1024*1024))
   local presignable=0
   case "$mime" in image/jpeg|image/png|image/webp|image/gif|video/mp4|video/webm) presignable=1;; esac
@@ -124,11 +161,13 @@ build_content() {
 }
 
 # ---- post / schedule -------------------------------------------------------
-# shared: assemble the CreatePostRequest body from parsed flags into $BODY
-assemble_post() {
-  PROVIDER=""; CHANNEL=""; TEXT=""; MEDIA=(); FIRST=""; IGTYPE=""; TITLE=""; AT=""
+# parse_post OP ARGS... -> validated flags in globals; nothing is sent
+parse_post() {
+  local op="$1"; shift
+  PROVIDER=""; CHANNEL=""; TEXT=""; MEDIA=(); FIRST=""; IGTYPE=""; TITLE=""; AT=""; CONFIRM=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --confirm)  CONFIRM="$2";  shift 2;;
       --provider) PROVIDER="$2"; shift 2;;
       --channel)  CHANNEL="$2";  shift 2;;
       --text)     TEXT="$2";     shift 2;;
@@ -141,11 +180,43 @@ assemble_post() {
     esac
   done
   [ -n "$PROVIDER" ] || die "--provider is required"
+  local m
+  for m in "${MEDIA[@]:-}"; do [ -z "$m" ] || [ ! -f "$m" ] || check_upload_file "$m"; done
+  if [ "$op" = schedule ]; then
+    [ -n "$AT" ] || die "--at <ISO8601 future datetime> is required for schedule"
+    # past-due / not-future guard (mirrors the API + MCP)
+    local now sched
+    now="$(date -u +%s)"
+    sched="$(date -u -j -f '%Y-%m-%dT%H:%M:%S' "${AT%%.*}" +%s 2>/dev/null \
+          || date -u -d "$AT" +%s 2>/dev/null || echo 0)"
+    [ "$sched" -gt "$now" ] || die "--at must be a future time (got: $AT)"
+  fi
+}
+
+# post_description OP -> the exact operation the user approves (local files by content hash)
+post_description() {
+  local media_json="[]" m
+  for m in "${MEDIA[@]:-}"; do
+    [ -z "$m" ] && continue
+    if [ -f "$m" ]; then
+      media_json="$(jq -c --arg f "$m" --arg h "$(file_fingerprint "$m")" '. + [{file:$f, sha256:$h}]' <<<"$media_json")"
+    else
+      media_json="$(jq -c --arg u "$m" '. + [{url:$u}]' <<<"$media_json")"
+    fi
+  done
+  jq -n --arg op "$1" --arg p "$PROVIDER" --arg c "$CHANNEL" --arg t "$TEXT" --argjson media "$media_json" \
+        --arg fc "$FIRST" --arg ig "$IGTYPE" --arg title "$TITLE" --arg at "$AT" '
+    {op:$op, provider:$p, channel:$c, text:$t, media:$media, firstComment:$fc, igType:$ig, title:$title}
+    + (if $op=="schedule" then {at:$at} else {} end)'
+}
+
+# build_post -> the CreatePostRequest body in $BODY (uploads local media, resolves the channel)
+build_post() {
   # each --media may be a local file (upload it) or an existing URL
   local urls=() m
   for m in "${MEDIA[@]:-}"; do
     [ -z "$m" ] && continue
-    if [ -f "$m" ]; then urls+=("$(cmd_upload "$m")"); else urls+=("$m"); fi
+    if [ -f "$m" ]; then urls+=("$(do_upload "$m")"); else urls+=("$m"); fi
   done
   local media_csv; media_csv="$(IFS=,; echo "${urls[*]:-}")"
 
@@ -166,20 +237,17 @@ assemble_post() {
 }
 
 cmd_post() {
-  local BODY; assemble_post "$@"
+  local BODY; parse_post post "$@"
+  gate "$(post_description post)" "$CONFIRM"
+  build_post
   api POST /api/posts/publish "$BODY" \
     | jq '{id:.data.group.id, status:.data.group.status, publish:.data.publishStatus}'
 }
 
 cmd_schedule() {
-  local BODY; assemble_post "$@"
-  [ -n "${AT:-}" ] || die "--at <ISO8601 future datetime> is required for schedule"
-  # past-due / not-future guard (mirrors the API + MCP)
-  local now sched
-  now="$(date -u +%s)"
-  sched="$(date -u -j -f '%Y-%m-%dT%H:%M:%S' "${AT%%.*}" +%s 2>/dev/null \
-        || date -u -d "$AT" +%s 2>/dev/null || echo 0)"
-  [ "$sched" -gt "$now" ] || die "--at must be a future time (got: $AT)"
+  local BODY; parse_post schedule "$@"
+  gate "$(post_description schedule)" "$CONFIRM"
+  build_post
   BODY="$(echo "$BODY" | jq --arg at "$AT" '. + {scheduledAt:$at}')"
   api POST /api/posts/schedule "$BODY" | jq '{id:.data.id, status:.data.status}'
 }
@@ -189,8 +257,23 @@ cmd_whoami()   { api GET /api/v1/account | jq '{name, email, uniqueId, onboardin
 cmd_channels() { api GET /api/connections | jq -r '.[] | "\(.provider)\t\(.channelName)\t\(.providerId)\tattention=\(.requiresAttention)"'; }
 cmd_posts()    { local s="${1:-}"; api GET "/api/posts${s:+?status=$s}" | unwrap; }
 cmd_results()  { api GET /api/posts/results | jq '.data.results'; }
-cmd_cancel()   { local id="${1:?usage: postnext cancel <postId>}"; valid_id "$id"; api POST "/api/posts/$id/cancel-schedule" | jq '.data|{id, status}'; }
-cmd_delete()   { local id="${1:?usage: postnext delete <groupId>}"; valid_id "$id"; api DELETE "/api/posts/$id" | jq '.data'; }
+# id_and_confirm USAGE ARGS... -> ID and CONFIRM globals
+id_and_confirm() {
+  local usage="$1"; shift
+  ID="${1:-}"; CONFIRM=""; [ -n "$ID" ] || die "usage: $usage"; shift
+  while [ $# -gt 0 ]; do case "$1" in --confirm) CONFIRM="${2:-}"; shift 2 || die "--confirm needs a value";; *) die "unknown flag: $1";; esac; done
+  valid_id "$ID"
+}
+cmd_cancel() {
+  id_and_confirm "postnext cancel <postId> [--confirm CODE]" "$@"
+  gate "$(jq -n --arg id "$ID" '{op:"cancel", postId:$id}')" "$CONFIRM"
+  api POST "/api/posts/$ID/cancel-schedule" | jq '.data|{id, status}'
+}
+cmd_delete() {
+  id_and_confirm "postnext delete <groupId> [--confirm CODE]" "$@"
+  gate "$(jq -n --arg id "$ID" '{op:"delete", groupId:$id}')" "$CONFIRM"
+  api DELETE "/api/posts/$ID" | jq '.data'
+}
 
 cmd_analytics() {
   local sub="${1:-overview}"; shift || true
@@ -217,6 +300,10 @@ postnext <command>
   cancel <postId>             cancel a scheduled post (back to draft)
   delete <groupId>            delete a post from PostNext
   analytics <overview|posts|daily|audience-growth|engagement-over-time|best-time P|sync|post ID>
+
+post, schedule, cancel, delete and upload change the account. Run once to get a
+PREVIEW (nothing is sent, exit code 3); after the user approves it, run the same
+command again with --confirm <code from the preview>.
 
 Env: POSTNEXT_API_KEY (required)
 EOF
