@@ -4,7 +4,7 @@ description: Manage social media through PostNext - schedule, publish, and analy
 allowed-tools: Bash(./postnext:*), Bash(curl:*), Bash(jq:*), Read
 metadata:
   requires:
-    bins: [curl, jq]
+    bins: [bash, curl, jq]
     env: [POSTNEXT_API_KEY]
 ---
 
