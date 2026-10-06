@@ -23,7 +23,7 @@ case "$url" in */api/connections) body='[{"provider":"twitter","channelName":"@a
 if [ -n "$out" ]; then printf '%s' "$body" > "$out"; echo 200; else printf '%s' "$body"; fi
 EOF
 chmod +x "$WORK/bin/curl"
-export CURL_LOG="$WORK/curl.log" PATH="$WORK/bin:$PATH" POSTNEXT_API_KEY=apikey_00000000-0000-0000-0000-000000000000
+export CURL_LOG="$WORK/curl.log" PATH="$WORK/bin:$PATH" POSTNEXT_API_KEY=apikey_dummy-not-a-key
 printf 'png-one' > "$WORK/a.png"
 FUTURE="$(date -u -v+2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+2 days' +%Y-%m-%dT%H:%M:%SZ)"
 

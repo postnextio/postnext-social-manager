@@ -8,7 +8,7 @@
 | `{success, data, meta}` | `GET /api/posts` when `?page`/`?limit` is present |
 | `{success, data, pagination}` | `GET /api/assets/mine` (pagination is top-level, not `meta`) |
 | **bare array** | `GET /api/connections` |
-| **flat object, no wrapper** | `GET /api/v1/account`; connection `/check`; `upload/single` and `upload/url` (`{message, asset}`); `DELETE /api/assets/{id}` (`{message, success}`) |
+| **flat object, no wrapper** | `GET /api/v1/account`; connection `/check`; `upload/single` and `upload/url` (`{message, asset}`) |
 
 When parsing, do not assume a `data` key. The `postnext` helper unwraps `data` only when present.
 

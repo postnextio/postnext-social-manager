@@ -57,4 +57,5 @@ Note the different response shape: single/url return a flat `{message, asset}` (
 
 - `GET /api/assets/mine?page=1&limit=50` -> `{success, data, pagination}` (pagination is top-level).
 - `GET /api/assets/{assetId}` -> `{success, data}`.
-- `DELETE /api/assets/{assetId}` -> flat `{message, success}`.
+
+Deleting assets is out of scope for this skill; use the PostNext web app.

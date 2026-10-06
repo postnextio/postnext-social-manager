@@ -117,7 +117,8 @@ cmd_upload() {
   do_upload "$file"
 }
 
-# do_upload FILE -> uploads without asking (callers have already passed the gate)
+# do_upload FILE -> the upload itself. Not a command: only cmd_upload and build_post call it,
+# and both do so after gate() has matched the user's --confirm code.
 do_upload() {
   local file="$1"
   local size mime; size="$(wc -c < "$file" | tr -d ' ')"; mime="$(mime_for "$file")"

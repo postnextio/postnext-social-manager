@@ -1,6 +1,7 @@
 ---
 name: postnext-social-manager
-description: Manage social media through PostNext - schedule, publish, and analyze posts across Twitter/X, Instagram, LinkedIn, Threads, YouTube, TikTok, and Bluesky via the PostNext public API. Use when the user wants to draft, schedule, or publish social posts, upload media for posts, check what is queued, or read social analytics (engagement, best time to post, audience growth) and has a PostNext account and API key.
+description: Manage social media through PostNext - schedule, publish, and analyze posts across Twitter/X, Instagram, LinkedIn, Threads, YouTube, TikTok, and Bluesky via the PostNext public API. Use when the user wants to draft, schedule, or publish social posts, upload media for posts, check what is queued, cancel a scheduled post or delete a post from PostNext, read social analytics (engagement, best time to post, audience growth) or refresh them with an analytics sync, and has a PostNext account and API key. Publishing, scheduling, cancelling, deleting and uploading always preview first and need the user's approval.
+allowed-tools: Bash(./postnext:*), Bash(curl:*), Bash(jq:*), Read
 metadata:
   requires:
     bins: [curl, jq]

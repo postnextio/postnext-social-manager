@@ -35,6 +35,8 @@ Create a post by sending a `providers` map. Each key is a **bare provider name**
 
 Existing post by id: `POST /api/posts/{postId}/publish`, `POST /api/posts/{postId}/schedule`, `POST /api/posts/{postId}/cancel-schedule` (back to draft), `DELETE /api/posts/{groupId}` (removes from PostNext; does not delete an already-published post from the platform).
 
+> Safety: every call in this section changes the user's account. Before any publish, schedule, cancel or delete, show the user the exact provider, channel, text, media, time and post id, and wait for their explicit yes. The `postnext` helper enforces this with a preview and a `--confirm` code; with raw curl it is on you.
+
 `userId` and `teamId` are derived from the key - never send them.
 
 Note: fetching a deleted or non-existent post (`GET /api/posts/{id}`) returns HTTP 500 with `message: "Post group not found"`, not 404 (see `errors.md`).
@@ -73,7 +75,7 @@ Attach media by URL (`content.media[].url` or the legacy `content.mediaUrls[]`).
 
 `scheduledAt` must be a future ISO8601 datetime (past or now is a 400). `timezone` only affects recurrence and display; it never shifts the fire time.
 
-**Idempotency:** raw `POST /api/posts/{postId}/schedule` will create a duplicate job if called twice, causing a double-publish. Before re-scheduling, check the post is not already scheduled to that time (the `postnext` helper guards a +/- 60s window and refuses past-due times).
+**Idempotency:** raw `POST /api/posts/{postId}/schedule` will create a duplicate job if called twice, causing a double-publish. Before re-scheduling, list the post's current state and confirm it is not already scheduled. The `postnext` helper refuses past times, and its `--confirm` code covers one exact operation, but it does not detect an existing job for the same post.
 
 ## Raw curl
 
