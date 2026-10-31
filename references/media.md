@@ -24,7 +24,7 @@ Never upload with raw curl: it skips the preview and `--confirm` step.
 
 Other file types are refused. Presigned uploads pre-charge storage quota for the declared size, return 413 over 50 MB, and the finalize step checks the bytes against the declared type (415 on a mismatch).
 
-Uploading from a remote URL is not covered by this skill. Download the file, then use `./postnext upload` once the user approves.
+Uploading a remote URL into the media library is not covered by this skill. Either ask the user for a local copy of the file and upload that, or pass the public URL straight to `--media` on `post` or `schedule` (the helper accepts URLs and attaches them as they are).
 
 ## Then attach it
 

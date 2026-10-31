@@ -1,6 +1,6 @@
 ---
 name: postnext-social-manager
-description: Manage social media through PostNext - schedule, publish, and analyze posts across Twitter/X, Instagram, LinkedIn, Threads, YouTube, TikTok, and Bluesky via the PostNext public API. Use when the user wants to draft, schedule, or publish social posts, upload media for posts, check what is queued, cancel a scheduled post or delete a post from PostNext, read social analytics (engagement, best time to post, audience growth) or refresh them with an analytics sync, and has a PostNext account and API key. Publishing, scheduling, cancelling, deleting and uploading always preview first and need the user's approval.
+description: Manage social media through PostNext - schedule, publish, and analyze posts across Twitter/X, Instagram, LinkedIn, Threads, YouTube, TikTok, and Bluesky via the PostNext public API. Use when the user wants to compose, schedule, or publish social posts, upload media for posts, check what is queued, cancel a scheduled post or delete a post from PostNext, read social analytics (engagement, best time to post, audience growth) or refresh them with an analytics sync, and has a PostNext account and API key. Publishing, scheduling, cancelling, deleting, uploading and analytics sync always preview first and need the user's approval.
 allowed-tools: Bash(./postnext:*), Bash(jq:*), Read
 metadata:
   requires:
@@ -20,7 +20,7 @@ Drive a PostNext account programmatically: connect channels, upload media, compo
 
 Two ways to use this skill:
 - **Helper (required for anything that changes the account):** the bundled `postnext` script (needs `curl` + `jq`). It handles the fiddly, error-prone parts for you and asks for the user's approval before any change. Run `./postnext help`.
-- **Raw curl (reads only):** where the helper cannot run, `references/` has curl recipes for reading channels, posts and analytics. Publishing, scheduling, cancelling, deleting and uploading always go through the helper, so its preview and `--confirm` step always runs.
+- **Raw curl (reads only):** where the helper cannot run, `references/` has curl recipes for reading channels, posts and analytics. Publishing, scheduling, cancelling, deleting, uploading and analytics sync always go through the helper, so its preview and `--confirm` step always runs.
 
 ## The core loop
 
@@ -30,15 +30,15 @@ Two ways to use this skill:
    - `postnext post --provider twitter --text "..." --media ./a.png`
    - `postnext schedule --provider instagram --text "..." --media ./a.jpg --at 2026-07-25T14:00:00Z`
 
-   Every command that changes the account (`post`, `schedule`, `cancel`, `delete`, `upload`) first prints a **preview and sends nothing** (exit code 3). Show the preview to the user. Only after they approve it, run the identical command again with `--confirm <code>` from the preview. The code covers that exact operation: if the text, media, time or target changes, preview again and get a fresh approval.
+   Every command that changes the account (`post`, `schedule`, `cancel`, `delete`, `upload`, `analytics sync`) first prints a **preview and sends nothing** (exit code 3). Show the preview to the user. Only after they approve it, run the identical command again with `--confirm <code>` from the preview. The code covers that exact operation: if the text, media, time or target changes, preview again and get a fresh approval.
 4. **Measure**: `postnext analytics overview`, `postnext analytics best-time twitter`, `postnext results`.
 
 ## Safety
 
 - The API key acts on the user's real social accounts. Use a dedicated key, and never paste it into posts, logs or URLs.
-- Confirm with the user before any publish, schedule, cancel, delete or upload. The helper enforces this: without the `--confirm` code from its own preview it sends nothing. Never pass a code the user has not approved, and never reuse one for a changed operation.
+- Confirm with the user before any publish, schedule, cancel, delete, upload or analytics sync. The helper enforces this: without the `--confirm` code from its own preview it sends nothing. Never pass a code the user has not approved, and never reuse one for a changed operation.
 - `delete` removes the post from PostNext only. It does not remove an already-published post from the platform.
-- Never publish, schedule, cancel, delete or upload with raw curl or another HTTP client. That skips the preview and the user's approval.
+- Never publish, schedule, cancel, delete, upload or run an analytics sync with raw curl or another HTTP client. That skips the preview and the user's approval.
 - The helper only talks to `https://api-app.postnext.io`. Do not point raw curl recipes at any other host with the key.
 
 ## Four traps this skill exists to prevent
@@ -63,8 +63,8 @@ The PostNext API has four behaviors that silently produce broken posts. The `pos
 ## Known limitations
 
 - No channel connect over the API (browser-only in PostNext).
-- Account changes need a shell: publishing, scheduling, cancelling, deleting and uploading run only through the bundled helper.
-- Saving drafts, publishing or scheduling an existing post by id, and uploading from a remote URL are not covered (use the PostNext web app).
+- Account changes need a shell: publishing, scheduling, cancelling, deleting, uploading and analytics sync run only through the bundled helper.
+- Saving drafts, publishing or scheduling an existing post by id, and uploading a remote URL into the media library are not covered (use the PostNext web app). A public media URL can go straight to `--media` on `post` or `schedule`.
 - No team switching: the key operates on its account's default team.
 - One entry per provider per request (no multi-account-per-provider in a single post).
 - Analytics and per-post metrics require PUBLISHED posts.

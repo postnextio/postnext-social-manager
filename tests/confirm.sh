@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The five commands that change the account (post, schedule, cancel, delete,
-# upload) must send NOTHING until called with the --confirm code from their own
+# The six commands that change the account (post, schedule, cancel, delete,
+# upload, analytics sync) must send NOTHING until called with the --confirm code from their own
 # preview. A fake curl on PATH records every call, so each case proves whether a
 # request went out. Usage: bash tests/confirm.sh   (no network, no key needed;
 # PN_BASH=/bin/bash runs the helper under bash 3.2)
@@ -55,6 +55,13 @@ check "schedule" schedule --provider twitter --text "hello" --at "$FUTURE"
 check "cancel"   cancel abc123
 check "delete"   delete abc123
 check "upload"   upload a.png
+check "analytics sync" analytics sync
+
+# a confirmed sync sends exactly one request: the POST to the sync route
+run analytics sync; C="$(code_of)"
+run analytics sync --confirm "$C"
+if [ "$RC" -eq 0 ] && [ "$(calls)" -eq 1 ] && grep -q -- "-X POST https://api-app.postnext.io/api/v1/analytics/sync" "$CURL_LOG"; then ok "confirmed sync sends one POST to /api/v1/analytics/sync"
+else bad "confirmed sync" "rc=$RC calls=$(calls) log=$(cat "$CURL_LOG")"; fi
 
 # a code approves ONE exact operation: changed text, target or file bytes need a new one
 run post --provider twitter --text "hello"; C="$(code_of)"
@@ -74,6 +81,8 @@ if [ "$RC" -eq 3 ] && [ "$(calls)" -eq 0 ]; then ok "swapped file bytes invalida
 # reads are not gated
 run channels
 if [ "$RC" -eq 0 ] && [ "$(calls)" -gt 0 ]; then ok "reads run without a code"; else bad "reads" "rc=$RC calls=$(calls)"; fi
+run analytics overview
+if [ "$RC" -eq 0 ] && [ "$(calls)" -eq 1 ]; then ok "analytics reads run without a code"; else bad "analytics reads" "rc=$RC calls=$(calls)"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

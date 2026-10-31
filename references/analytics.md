@@ -6,7 +6,7 @@ All analytics endpoints return `{success, data}`. Several require a paid tier (n
 
 Stored metrics are periodically snapshotted. To pull fresh numbers on demand:
 
-`./postnext analytics sync` (paid) -> `{synced, summary:{twitterSnapped, instagramSnapped, tiktokSnapped, linkedinSnapped}}`. Rate-limited and bounded by per-platform caps. Run it before reading if you need current data.
+`./postnext analytics sync` (paid) -> `{synced, summary:{twitterSnapped, instagramSnapped, tiktokSnapped, linkedinSnapped}}`. Rate-limited and bounded by per-platform caps. Like the other account-changing commands it first prints a preview and sends nothing (exit code 3). Show it to the user, and only after they approve, run it again with `--confirm <code>` from the preview. Run it before reading if you need current data.
 
 ## Endpoints
 
@@ -37,6 +37,8 @@ BASE=https://api-app.postnext.io
 curl -sS "$BASE/api/v1/analytics/overview?period=30d" -H "x-api-key: $POSTNEXT_API_KEY"
 curl -sS "$BASE/api/v1/analytics/best-time-to-post?platform=instagram&timezone=Europe/Bucharest&topN=5" -H "x-api-key: $POSTNEXT_API_KEY"
 
-# refresh stored metrics through the helper, not raw curl
+# refresh stored metrics through the helper, not raw curl: the first run only previews
 ./postnext analytics sync
+# only after the user approves that preview
+./postnext analytics sync --confirm <code from the preview>
 ```

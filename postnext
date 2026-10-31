@@ -28,7 +28,8 @@ case "$POSTNEXT_API_KEY" in *[!A-Za-z0-9_.-]*) die "POSTNEXT_API_KEY contains un
 kcurl() { curl -q -H @- "$@" <<<"x-api-key: $POSTNEXT_API_KEY"; }
 
 # ---- confirmation gate -------------------------------------------------------
-# Every command that changes the account (post, schedule, cancel, delete, upload)
+# Every command that changes the account (post, schedule, cancel, delete, upload,
+# analytics sync)
 # first prints a PREVIEW and sends nothing. It runs only when called again with
 # --confirm <code>, where <code> is a hash of that exact operation: change the
 # text, media, time or target and the old code no longer matches.
@@ -276,12 +277,22 @@ cmd_delete() {
   api DELETE "/api/posts/$ID" | jq '.data'
 }
 
+# analytics sync [--confirm CODE] -> a paid, rate-limited POST that snapshots fresh metrics server-side
+cmd_analytics_sync() {
+  local confirm=""
+  while [ $# -gt 0 ]; do case "$1" in --confirm) confirm="${2:-}"; shift 2 || die "--confirm needs a value";; *) die "unknown flag: $1";; esac; done
+  gate "$(jq -n '{op:"analytics-sync", channels:"all connected channels (twitter, instagram, tiktok, linkedin)",
+    effect:"PostNext fetches fresh metrics from each platform and stores new snapshots; no posts change",
+    cost:"paid feature; uses one sync from your rate limit and per-platform caps"}')" "$confirm"
+  api POST /api/v1/analytics/sync | unwrap
+}
+
 cmd_analytics() {
   local sub="${1:-overview}"; shift || true
   case "$sub" in
     overview|posts|daily|audience-growth|engagement-over-time) api GET "/api/v1/analytics/$sub" | unwrap;;
     best-time) local p="${1:?usage: postnext analytics best-time <provider>}"; valid_id "$p"; api GET "/api/v1/analytics/best-time-to-post?platform=$p" | unwrap;;
-    sync)      api POST /api/v1/analytics/sync | unwrap;;
+    sync)      cmd_analytics_sync "$@";;
     post)      local id="${1:?usage: postnext analytics post <postId>}"; valid_id "$id"; api GET "/api/v1/analytics/post/$id" | unwrap;;
     *) die "unknown analytics subcommand: $sub";;
   esac
@@ -302,9 +313,9 @@ postnext <command>
   delete <groupId>            delete a post from PostNext
   analytics <overview|posts|daily|audience-growth|engagement-over-time|best-time P|sync|post ID>
 
-post, schedule, cancel, delete and upload change the account. Run once to get a
-PREVIEW (nothing is sent, exit code 3); after the user approves it, run the same
-command again with --confirm <code from the preview>.
+post, schedule, cancel, delete, upload and analytics sync change the account.
+Run once to get a PREVIEW (nothing is sent, exit code 3); after the user approves
+it, run the same command again with --confirm <code from the preview>.
 
 Env: POSTNEXT_API_KEY (required)
 EOF

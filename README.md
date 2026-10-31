@@ -10,7 +10,7 @@ Copy this directory into your skills location (for Claude Code, a `skills/` dire
 export POSTNEXT_API_KEY=<your key>   # create at https://postnext.io/account/api-keys
 ```
 
-The bundled `postnext` helper needs `curl` and `jq`. In an environment with no shell (for example claude.ai), the skill can still read channels, posts and analytics with the curl recipes in `references/`. Publishing, scheduling, cancelling, deleting and uploading need the helper, so they always go through its preview and `--confirm` step.
+The bundled `postnext` helper needs `curl` and `jq`. In an environment with no shell (for example claude.ai), the skill can still read channels, posts and analytics with the curl recipes in `references/`. Publishing, scheduling, cancelling, deleting, uploading and analytics sync need the helper, so they always go through its preview and `--confirm` step.
 
 ## Quick start
 
@@ -22,7 +22,7 @@ The bundled `postnext` helper needs `curl` and `jq`. In an environment with no s
 ./postnext analytics best-time twitter
 ```
 
-Run `./postnext help` for the full command list. `post`, `schedule`, `cancel`, `delete` and `upload` always preview first and need the `--confirm` code from that preview to run. `bash tests/confirm.sh` checks this offline.
+Run `./postnext help` for the full command list. `post`, `schedule`, `cancel`, `delete`, `upload` and `analytics sync` always preview first and need the `--confirm` code from that preview to run. `bash tests/confirm.sh` checks this offline.
 
 ## What is in here
 
@@ -31,8 +31,7 @@ Run `./postnext help` for the full command list. `post`, `schedule`, `cancel`, `
 | `SKILL.md` | Skill entry point: setup, the core loop, and a router to the references. |
 | `postnext` | Bash helper (curl + jq) that handles the API's error-prone parts. |
 | `references/` | Per-area docs (posts, media, channels, analytics, errors) with helper commands and read-only curl recipes. |
-| `tests/confirm.sh` | Proves the five account-changing commands send nothing without a matching `--confirm` code. |
-| `docs/` | Design spec. |
+| `tests/confirm.sh` | Proves the six account-changing commands send nothing without a matching `--confirm` code. |
 
 ## Scope
 
