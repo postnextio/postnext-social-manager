@@ -4,47 +4,27 @@
 
 Upload an image or video, then put the returned **`asset.url`** into a post's `content.media[].url`. The `assetId` is not used by the publish path.
 
-## Which upload path
-
-| Case | Endpoint | Cap | Needs `userId`? |
-|------|----------|-----|-----------------|
-| image or file <= 50 MB, one of jpeg/png/webp/gif/mp4/webm | 3-step presigned (`create-url` -> PUT -> `complete`) | 50 MB | no (from key) |
-| large video (> 50 MB, up to 500 MB) or other type | multipart `POST /api/assets/upload/single` | 500 MB | **yes** = account `uniqueId` |
-| a remote image URL | `POST /api/assets/upload/url` | 25 MB | **yes**; **image only** (a video URL is stored as .jpg) |
-
-Get the account `uniqueId` from `GET /api/v1/account` (`.uniqueId`).
-
-## 3-step presigned flow (preferred for images and small video)
+## Upload with the helper
 
 ```bash
-BASE=https://api-app.postnext.io
-# 1. request an upload URL (declares type + exact byte size; pre-charges storage quota)
-INIT=$(curl -sS -X POST $BASE/api/assets/upload/create-url \
-  -H "x-api-key: $POSTNEXT_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"filename":"hero.png","contentType":"image/png","sizeBytes":48213}')
-UPLOAD_URL=$(echo "$INIT" | jq -r .data.uploadUrl)
-UPLOAD_ID=$(echo "$INIT" | jq -r .data.uploadId)
-
-# 2. PUT the bytes. Content-Type MUST equal the declared contentType or S3 rejects the signature.
-curl -sS -X PUT "$UPLOAD_URL" -H 'Content-Type: image/png' --data-binary @hero.png
-
-# 3. finalize -> returns the asset; use .data.url in the post
-curl -sS -X POST $BASE/api/assets/upload/complete \
-  -H "x-api-key: $POSTNEXT_API_KEY" -H 'Content-Type: application/json' \
-  -d "{\"uploadId\":\"$UPLOAD_ID\"}" | jq -r .data.url
+./postnext upload ./hero.png                    # prints a preview and sends nothing (exit code 3)
+./postnext upload ./hero.png --confirm <code>   # only after the user approves; prints the asset URL
 ```
 
-`contentType` allow-list (presigned): `image/jpeg, image/png, image/webp, image/gif, video/mp4, video/webm`. `sizeBytes` must be the true byte size and <= 50 MB (else 413). `complete` verifies the bytes by magic number (415 on mismatch) and reconciles the storage charge to the real size.
+Or skip the separate upload and pass the file straight to `post` or `schedule` with `--media ./hero.png`. The file is then uploaded only after that command's own confirmation. Either way the preview pins the file by its sha256, so a swapped file needs a fresh approval.
 
-## Multipart single (large video)
+Never upload with raw curl: it skips the preview and `--confirm` step.
 
-```bash
-UID=$(curl -sS https://api-app.postnext.io/api/v1/account -H "x-api-key: $POSTNEXT_API_KEY" | jq -r .uniqueId)
-curl -sS -X POST https://api-app.postnext.io/api/assets/upload/single \
-  -H "x-api-key: $POSTNEXT_API_KEY" \
-  -F "file=@big.mp4;type=video/mp4" -F "userId=$UID" | jq -r .asset.url
-```
-Note the different response shape: single/url return a flat `{message, asset}` (no `data` wrapper); presigned `complete` returns `{success, data: asset}`.
+## How the helper uploads
+
+| Case | Route | Cap |
+|------|-------|-----|
+| jpeg, png, webp, gif, mp4 or webm up to 50 MB | 3-step presigned upload (request a URL, PUT the bytes, finalize) | 50 MB |
+| larger video (up to 500 MB), or .mov | multipart single upload (the helper adds the account `uniqueId` for you) | 500 MB |
+
+Other file types are refused. Presigned uploads pre-charge storage quota for the declared size, return 413 over 50 MB, and the finalize step checks the bytes against the declared type (415 on a mismatch).
+
+Uploading from a remote URL is not covered by this skill. Download the file, then use `./postnext upload` once the user approves.
 
 ## Then attach it
 

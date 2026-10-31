@@ -8,7 +8,7 @@
 #   1. posts are keyed by the BARE provider name (twitter, not twitter:@handle)
 #   2. media is attached by asset URL, never by assetId
 #   3. providerId is resolved from GET /connections (platform-native id), never uniqueId
-# See references/*.md for the raw curl equivalents (usable with no helper at all).
+# See references/*.md for the request shapes and read-only curl recipes.
 
 set -euo pipefail
 

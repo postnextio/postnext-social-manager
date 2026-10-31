@@ -1,8 +1,8 @@
 # Posts
 
-> Safety: the API key posts to real accounts. Use a dedicated key, never echo it, and confirm with the user before any publish, schedule, cancel or delete.
+> Safety: the API key posts to real accounts. Use a dedicated key, never echo it, and confirm with the user before any publish, schedule, cancel or delete. Do all four only through the `postnext` helper: its preview and `--confirm` step is that confirmation, and a raw request skips it.
 
-Create a post by sending a `providers` map. Each key is a **bare provider name** and each value is one channel's entry.
+A post is a `providers` map. The helper builds it for you; this page documents the shape so you can read posts back and understand helper errors. Each key is a **bare provider name** and each value is one channel's entry.
 
 ## Request shape (CreatePostRequest)
 
@@ -25,17 +25,18 @@ Create a post by sending a `providers` map. Each key is a **bare provider name**
 
 `providerId` and `channelName` come from `GET /api/connections` (see `channels.md`). Resolve them by matching `provider` + `channelName`. A wrong/missing `providerId` makes the publish worker reject the row silently.
 
-## Three ways to send it
+## How to send it
 
-| Goal | Endpoint |
-|------|----------|
-| Save a draft | `POST /api/posts` |
-| Publish immediately | `POST /api/posts/publish` |
-| Schedule | `POST /api/posts/schedule` with `"scheduledAt": "<future ISO8601>"` |
+| Goal | Helper command |
+|------|----------------|
+| Publish immediately | `./postnext post --provider P --text "..." [--media FILE or URL]` |
+| Schedule | `./postnext schedule --provider P --text "..." --at <future ISO8601>` |
+| Cancel a scheduled post (back to draft) | `./postnext cancel <postId>` |
+| Delete a post from PostNext | `./postnext delete <groupId>` (does not delete an already-published post from the platform) |
 
-Existing post by id: `POST /api/posts/{postId}/publish`, `POST /api/posts/{postId}/schedule`, `POST /api/posts/{postId}/cancel-schedule` (back to draft), `DELETE /api/posts/{groupId}` (removes from PostNext; does not delete an already-published post from the platform).
+> Safety: every command in this table changes the user's account. Each one first prints a preview and sends nothing (exit code 3). Show the user that preview, wait for their explicit yes, then run the identical command again with `--confirm <code>` from the preview. Never send these requests with raw curl or another HTTP client.
 
-> Safety: every call in this section changes the user's account. Before any publish, schedule, cancel or delete, show the user the exact provider, channel, text, media, time and post id, and wait for their explicit yes. The `postnext` helper enforces this with a preview and a `--confirm` code; with raw curl it is on you.
+Saving a draft, and publishing or scheduling an existing post by id, are not covered by this skill. Use the PostNext web app for those.
 
 `userId` and `teamId` are derived from the key - never send them.
 
@@ -75,17 +76,25 @@ Attach media by URL (`content.media[].url` or the legacy `content.mediaUrls[]`).
 
 `scheduledAt` must be a future ISO8601 datetime (past or now is a 400). `timezone` only affects recurrence and display; it never shifts the fire time.
 
-**Idempotency:** raw `POST /api/posts/{postId}/schedule` will create a duplicate job if called twice, causing a double-publish. Before re-scheduling, list the post's current state and confirm it is not already scheduled. The `postnext` helper refuses past times, and its `--confirm` code covers one exact operation, but it does not detect an existing job for the same post.
+**Idempotency:** every confirmed `schedule` creates a new scheduled post, so running it twice publishes twice. Before scheduling again, run `./postnext posts SCHEDULED` and check the post is not already queued. The helper refuses past times, and its `--confirm` code covers one exact operation, but it does not detect an existing post with the same content.
 
-## Raw curl
+## Examples
 
 ```bash
-# publish now
-curl -sS -X POST https://api-app.postnext.io/api/posts/publish \
-  -H "x-api-key: $POSTNEXT_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"providers":{"twitter":{"channelName":"@brand","providerId":"tw_123",
-       "content":{"text":"hi","media":[{"url":"https://cdn/x.png","type":"IMAGE"}]}}}}'
+# publish now: the first run prints a preview and sends nothing
+./postnext post --provider twitter --channel @brand --text "hi" --media ./x.png
+# only after the user approves that exact preview
+./postnext post --provider twitter --channel @brand --text "hi" --media ./x.png --confirm <code from the preview>
 
+# schedule, cancel and delete preview the same way
+./postnext schedule --provider twitter --text "hi" --at 2026-12-01T14:00:00Z
+./postnext cancel <postId>
+./postnext delete <groupId>
+```
+
+Reads are safe with raw curl when the helper cannot run:
+
+```bash
 # list posts (optionally by status)
 curl -sS "https://api-app.postnext.io/api/posts?status=SCHEDULED" -H "x-api-key: $POSTNEXT_API_KEY"
 
